@@ -1,15 +1,19 @@
-const express = require('express');
-const { graphqlHTTP } = require('express-graphql');
-const { buildSchema } = require('graphql')
+const express = require("express");
+const { graphqlHTTP } = require("express-graphql");
+const { buildSchema } = require("graphql");
+const mongoose = require("mongoose");
+
+const { PORT, dbURI } = require("./config");
+const Event = require("./models/event");
 
 const app = express();
 
 app.use(express.json());
 
-const events = []; //temp. solution while there's not db
-
-app.use('/graphql', graphqlHTTP({
-  schema: buildSchema(` 
+app.use(
+  "/graphql",
+  graphqlHTTP({
+    schema: buildSchema(` 
     type Event {
       _id: ID!
       title: String!
@@ -36,22 +40,43 @@ app.use('/graphql', graphqlHTTP({
       mutation: RootMutation
     }
   `),
-  rootValue: {
-    events: () => events,
-    createEvent: args => {
-      const { title, description, price, date } = args.eventInput;
-      const event = {
-        _id: Math.random().toString(),
-        title: title,
-        description: description,
-        price: +price,
-        date: date
-      }
-      events.push(event);
-      return event;
-    }
-  },
-  graphiql: true //debugging
-}));
+    rootValue: {
+      events: () => {
+        return Event.find()
+          .then((events) =>
+            events.map((event) => {
+              return { ...event._doc, _id: event._doc._id.toString() };
+            })
+          )
+          .catch((err) => {
+            throw err;
+          });
+      },
+      createEvent: (args) => {
+        const { title, description, price, date } = args.eventInput;
+        const event = new Event({
+          title: title,
+          description: description,
+          price: +price,
+          date: new Date(date),
+        });
+        return event
+          .save()
+          .then((result) => {
+            console.log(result);
+            return { ...result._doc };
+          })
+          .catch((err) => {
+            console.log(err);
+            throw err;
+          });
+      },
+    },
+    graphiql: true, //debugging
+  })
+);
 
-app.listen(3100);
+mongoose
+  .connect(dbURI)
+  .then(() => app.listen(PORT))
+  .catch((err) => console.log(`MongoDB connection problem ${err}`));
