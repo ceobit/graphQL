@@ -2,6 +2,7 @@ const express = require("express");
 const { graphqlHTTP } = require("express-graphql");
 const { buildSchema } = require("graphql");
 const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
 
 const { PORT, dbURI } = require("./config");
 const Event = require("./models/event");
@@ -70,7 +71,7 @@ app.use(
       user: () => {
         return User.find()
           .then((user) => {
-            return {...user._doc};
+            return { ...user._doc };
           })
           .catch((err) => {
             throw err;
@@ -99,20 +100,25 @@ app.use(
 
       createUser: (args) => {
         const { email, password } = args.userInput;
-        const user = new User({
-          email: email,
-          password: password,
-        });
-        return user
-        .save()
-        .then((result) => {
-          console.log(result);
-          return { ...result._doc };
+        return User.findOne({ email }).then(user => {
+          if (user) {
+            throw new Error('User exists already')
+          }
+          return bcrypt.hash(password, 12)
         })
-        .catch((err) => {
-          console.log(err);
-          throw err;
-        });
+        .then((hashedPassword) => {
+            const user = new User({
+              email: email,
+              password: hashedPassword,
+            });
+            return user.save();
+          })
+        .then(result => {
+            return { ...result._doc, password: null, id: result.id };
+          })
+          .catch((err) => {
+            throw err;
+          });
       },
     },
     graphiql: true, //debugging
